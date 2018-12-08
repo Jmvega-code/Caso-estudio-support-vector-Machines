@@ -1,0 +1,129 @@
+---
+title: "Predicción del tipo de tejido normal/tumoral en cáncer de colon usando el algoritmo de Support Vector Machines."
+author: "Juan Manuel Vega Arias"
+date: '`r format(Sys.Date(),"%e de %B, %Y")`'
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    css:
+    keep_md: true
+    toc_float: true
+  pdf_document:
+    toc: true
+    toc_depth: 3
+bibliography: 
+link-citations: yes
+---
+
+```{r libraries, include=FALSE}
+library("kernlab")
+library("class")
+library("knitr")
+library("e1071")
+library("kableExtra")
+```
+
+# Predicción del tipo de tejido normal/tumoral en cáncer de colon usando el algoritmo de Support Vector Machines (SVM)
+
+Un SMV puede ser imaginado como una superficie que crea un límite entre puntos de datos graficados multidimensionalmente que representan ejemplos y los valores de sus características. La meta de un SVM es crear una separación llamada hiperplano, que divide el espacio para crear particiones homogéneas a cada lado de este creando así grupos diferentes cada uno con características parecidas. Las SVM combinan aspectos de la clasificación por k-NN y de los métodos de regresión, permitiendo el modelado de relaciones altamente complejas.
+
+Se quiere predecir el tipo de tejido (normal/tumoral) en función de la expresión génica del tejido.
+
+## Paso 1 - recolección de datos
+
+Los datos se obtienen de un análisis de la expresión génica en pacientes con cáncer de colon mediante microarrays de oligonucleótidos. Después de un proceso de filtrado y normalización se han seleccionado la expresión génica de 2000 genes en 62 muestras de tejido de colon donde 40 son tejidos tumorales y 22 son tejidos sanos. La ultima variable (y) indica el tipo de tejido: “n” normal y “t” tumoral. El fichero con la información se llama colon2.csv
+
+## Paso 2 - exploración y preparación de datos
+
+```{r}
+tejido <- read.csv("colon2.csv")
+str(tejido)
+```
+
+Las SVM requieren que todas las características sean numéricas y sobre todo que estén escaladas a intervalos pequeños, sin embargo no necesitaremos transformar los datos ya que el paquete que usaremos se encargará automáticamente de ello.
+
+Lo que sí haremos es mezclar los datos para tomar muestras al azar al preparar los sets de entreno y prueba.
+
+```{r}
+set.seed(12345)
+shuffle <- sample(nrow(tejido),nrow(tejido))
+tejido <- tejido[shuffle,]
+```
+
+Ahora pasamos a preparar los sets de entreno y prueba
+```{r}
+tejido_entreno <- tejido[1:41,]
+tejido_prueba <- tejido[42:62,]
+```
+
+## Paso 3 - entrenamiento del modelo sobre los datos
+
+
+Usaremos la función `ksvm()` del paquete `kernlab`, previamente instalado.
+
+```{r}
+clasificador_tejido <- ksvm(y ~ ., data = tejido_entreno, kernel = "vanilladot")
+clasificador_tejido
+```
+
+
+## Paso 4 - evaluación del funcionamiento del modelo
+
+Esta información nos dice más bien poco de como clasificará nuestro modelo otros casos del mundo real. Necesitamos examinar su rendimiento con el set de prueba.
+Para ello usaremos la función `predict()` que nos permite hacer predicciones con el set de prueba.
+
+```{r}
+prediccion_tejido <- predict(clasificador_tejido, tejido_prueba)
+head(prediccion_tejido)
+```
+
+ahora comparamos el estado del tejido predicho por el modelo con el verdadero en el set de prueba con la función `table()` 
+
+```{r}
+table(prediccion_tejido, tejido_prueba$y)
+```
+
+Aquí vemos una tabla de confusión en la que hemos clasificado bien 2/5 muestras como normales "n", y 16/16 como tumorales "t".
+
+```{r}
+
+result <-prop.table(table(prediccion_tejido, tejido_prueba$y))
+exactitud <- result[1,1] + result[2,2]
+exactitud
+```
+
+Esto representa más de un 85% de exactitud, sin embargo vamos a intentar mejorar nuestro modelo.
+
+## Paso 5 - mejora de resultados del modelo
+
+Nuestro modelo de SVM usa una función de kernel lineal simple. Podríamos conseguir mapear nuestros datos en un espacio de mayores dimensiones con una función de kernel más compleja y así obtener un mejor ajuste del modelo.
+
+Hay muchas funciones de kernel para usar, pero una convención popular es comenzar con la función Gaussian RBF kernel, pero en este caso usaremos la función `tanh`.
+
+```{r}
+clasificador_tejido_tanh <- ksvm(y ~ ., data = tejido_entreno, kernel = "tanhdot")
+```
+
+Ahora hacemos las predicciones como antes.
+
+```{r}
+prediccion_tejido_tanh <- predict(clasificador_tejido_tanh, tejido_prueba)
+table(prediccion_tejido_tanh, tejido_prueba$y)
+```
+
+Seguidamente comparamos la exactitud con respecto al modelo anterior.
+
+```{r}
+result_tanh <- prop.table(table(prediccion_tejido_tanh, tejido_prueba$y))
+exactitud_tanh <- result_tanh[1,1] + result_tanh[2,2]
+exactitud_tanh
+exactitud_tanh - exactitud
+```
+
+Cambiando la función kernel de lineal simple a tanh hemos conseguido más de un 9.5% de exactitud en nuestras predicciones.
+
+
+
+
+
